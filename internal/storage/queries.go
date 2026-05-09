@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+func usageCalls(r *UsageRecord) int {
+	if r.Calls > 0 {
+		return r.Calls
+	}
+	return 1
+}
+
 // FileScanContext stores parser state needed to continue incremental scans.
 type FileScanContext struct {
 	SessionID string `json:"session_id"`
@@ -99,10 +106,10 @@ func (d *DB) UpsertSession(s *SessionRecord) error {
 
 // InsertUsage inserts a single usage record, ignoring duplicates.
 func (d *DB) InsertUsage(r *UsageRecord) error {
-	_, err := d.db.Exec(`INSERT OR IGNORE INTO usage_records(source,session_id,model,input_tokens,output_tokens,
+	_, err := d.db.Exec(`INSERT OR IGNORE INTO usage_records(source,session_id,model,calls,input_tokens,output_tokens,
 		cache_creation_input_tokens,cache_read_input_tokens,reasoning_output_tokens,cost_usd,timestamp,project,git_branch)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		r.Source, r.SessionID, r.Model, r.InputTokens, r.OutputTokens,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		r.Source, r.SessionID, r.Model, usageCalls(r), r.InputTokens, r.OutputTokens,
 		r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
 		r.CostUSD, r.Timestamp, r.Project, r.GitBranch)
 	return err
@@ -116,21 +123,85 @@ func (d *DB) InsertUsageBatch(records []*UsageRecord) error {
 		return err
 	}
 	defer tx.Rollback()
-	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO usage_records(source,session_id,model,input_tokens,output_tokens,
+	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO usage_records(source,session_id,model,calls,input_tokens,output_tokens,
 		cache_creation_input_tokens,cache_read_input_tokens,reasoning_output_tokens,cost_usd,timestamp,project,git_branch)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, r := range records {
-		_, err := stmt.Exec(r.Source, r.SessionID, r.Model, r.InputTokens, r.OutputTokens,
+		_, err := stmt.Exec(r.Source, r.SessionID, r.Model, usageCalls(r), r.InputTokens, r.OutputTokens,
 			r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
 			r.CostUSD, r.Timestamp, r.Project, r.GitBranch)
 		if err != nil {
 			return err
 		}
 	}
+	return tx.Commit()
+}
+
+// ReplaceSessionData replaces all derived data for one source/session pair.
+// This is for cumulative sources where later scans update session totals rather
+// than append per-call records.
+func (d *DB) ReplaceSessionData(source, sessionID string, session *SessionRecord, records []*UsageRecord, events []*PromptEvent) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM usage_records WHERE source=? AND session_id=?", source, sessionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM prompt_events WHERE source=? AND session_id=?", source, sessionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM sessions WHERE source=? AND session_id=?", source, sessionID); err != nil {
+		return err
+	}
+
+	if session != nil {
+		if _, err := tx.Exec(`INSERT INTO sessions(source,session_id,project,cwd,version,git_branch,start_time,prompts)
+			VALUES(?,?,?,?,?,?,?,?)`,
+			session.Source, session.SessionID, session.Project, session.CWD, session.Version, session.GitBranch, session.StartTime, session.Prompts); err != nil {
+			return err
+		}
+	}
+
+	if len(records) > 0 {
+		stmt, err := tx.Prepare(`INSERT OR IGNORE INTO usage_records(source,session_id,model,calls,input_tokens,output_tokens,
+			cache_creation_input_tokens,cache_read_input_tokens,reasoning_output_tokens,cost_usd,timestamp,project,git_branch)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		for _, r := range records {
+			if _, err := stmt.Exec(r.Source, r.SessionID, r.Model, usageCalls(r), r.InputTokens, r.OutputTokens,
+				r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
+				r.CostUSD, r.Timestamp, r.Project, r.GitBranch); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(events) > 0 {
+		stmt, err := tx.Prepare(`INSERT OR IGNORE INTO prompt_events(source, session_id, timestamp) VALUES(?,?,?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		for _, e := range events {
+			if _, err := stmt.Exec(e.Source, e.SessionID, e.Timestamp); err != nil {
+				return err
+			}
+		}
+	}
+
 	return tx.Commit()
 }
 

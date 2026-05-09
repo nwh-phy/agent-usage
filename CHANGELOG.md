@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+- Hermes collector for `~/.hermes/state.db`, including prompt events, token totals, cost, and Hermes API call counts.
+
 ## [1.0.1] - 2026-04-07
 
 ### Changed

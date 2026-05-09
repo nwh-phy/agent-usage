@@ -39,9 +39,9 @@ type CostByModel struct {
 
 // TimeSeriesPoint represents a single data point in a daily cost time series.
 type TimeSeriesPoint struct {
-	Date   string  `json:"date"`
-	Value  float64 `json:"value"`
-	Model  string  `json:"model,omitempty"`
+	Date  string  `json:"date"`
+	Value float64 `json:"value"`
+	Model string  `json:"model,omitempty"`
 }
 
 // TokenTimeSeriesPoint represents daily token usage broken down by category.
@@ -89,7 +89,7 @@ func (d *DB) GetDashboardStats(from, to time.Time, source, model string) (*Dashb
 	}
 	d.db.QueryRow(`SELECT COUNT(DISTINCT session_id) FROM usage_records WHERE timestamp BETWEEN ? AND ?`+filter, args...).Scan(&s.TotalSessions)
 	d.db.QueryRow(`SELECT COUNT(*) FROM prompt_events WHERE timestamp BETWEEN ? AND ?`+sf, append([]interface{}{from, to}, sa...)...).Scan(&s.TotalPrompts)
-	d.db.QueryRow(`SELECT COUNT(*) FROM usage_records WHERE timestamp BETWEEN ? AND ?`+filter, args...).Scan(&s.TotalCalls)
+	d.db.QueryRow(`SELECT COALESCE(SUM(calls),0) FROM usage_records WHERE timestamp BETWEEN ? AND ?`+filter, args...).Scan(&s.TotalCalls)
 	return s, nil
 }
 
@@ -224,7 +224,7 @@ type SessionDetail struct {
 
 // GetSessionDetail returns per-model usage breakdown for a specific session.
 func (d *DB) GetSessionDetail(sessionID string) ([]SessionDetail, error) {
-	rows, err := d.db.Query(`SELECT model, COUNT(*) as calls,
+	rows, err := d.db.Query(`SELECT model, COALESCE(SUM(calls),0) as calls,
 		SUM(input_tokens) as inp, SUM(output_tokens) as outp,
 		SUM(cache_read_input_tokens) as cr, SUM(cache_creation_input_tokens) as cc,
 		SUM(cost_usd) as cost

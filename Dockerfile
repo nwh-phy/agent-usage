@@ -24,7 +24,7 @@ FROM alpine:3.21
 # Copy CA certs from builder (needed for HTTPS pricing sync)
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-RUN mkdir -p /data /sessions/claude /sessions/codex
+RUN mkdir -p /data /sessions/claude /sessions/codex /sessions/openclaw /sessions/opencode /sessions/kiro /sessions/pi /sessions/hermes
 
 COPY --from=builder /agent-usage /agent-usage
 COPY config.docker.yaml /etc/agent-usage/config.yaml

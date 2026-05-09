@@ -28,7 +28,7 @@ cp config.yaml config.local.yaml  # edit as needed
 ├── main.go                  # Entry point
 ├── internal/
 │   ├── config/              # YAML config loader
-│   ├── collector/           # Data source parsers (Claude Code, Codex, OpenClaw, OpenCode, Kiro, Pi)
+│   ├── collector/           # Data source parsers (Claude Code, Codex, OpenClaw, OpenCode, Kiro, Pi, Hermes)
 │   ├── pricing/             # litellm price sync + cost calculation
 │   ├── storage/             # SQLite schema, read/write, cost backfill
 │   └── server/              # HTTP server, REST API, embedded web UI
@@ -38,15 +38,15 @@ cp config.yaml config.local.yaml  # edit as needed
 
 ## Adding a New Data Source
 
-1. Create `internal/collector/<source>.go` (directory scanner) and `<source>_process.go` (JSONL parser)
+1. Create `internal/collector/<source>.go` and, for JSONL sources, `<source>_process.go`
 2. Implement a scanner that:
-   - Walks the session directory for JSONL files
-   - Parses entries and extracts per-API-call token usage
+   - Walks the session directory for JSONL files or reads a local SQLite database
+   - Parses entries and extracts per-API-call token usage, or replaces cumulative session totals for sources such as Hermes
    - Calls `storage.DB` methods to write records
 3. Register the collector in `main.go`
 4. Add config fields in `internal/config/config.go`
 
-See `internal/collector/claude.go` + `claude_process.go` as the primary reference, or `openclaw.go` + `openclaw_process.go` as a second example. For a non-JSONL source (JSON metadata + JSONL prompts), see `kiro.go` + `kiro_process.go`. For a source sharing the same JSONL format as OpenClaw, see `pi.go` + `pi_process.go`.
+See `internal/collector/claude.go` + `claude_process.go` as the primary reference, or `openclaw.go` + `openclaw_process.go` as a second example. For a non-JSONL source (JSON metadata + JSONL prompts), see `kiro.go` + `kiro_process.go`. For a source sharing the same JSONL format as OpenClaw, see `pi.go` + `pi_process.go`. For a cumulative SQLite source, see `hermes.go`.
 
 ## Commit Convention
 

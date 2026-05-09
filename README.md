@@ -10,13 +10,13 @@ Single binary + SQLite — zero infrastructure required.
 
 **[中文文档](README_CN.md)**
 
-Collects local session data from Claude Code, Codex, OpenClaw, OpenCode, Kiro CLI, and Pi, calculates costs automatically, and presents token usage, cost trends, and session details through a web dashboard.
+Collects local session data from Claude Code, Codex, OpenClaw, OpenCode, Kiro CLI, Pi, and Hermes, calculates costs automatically, and presents token usage, cost trends, and session details through a web dashboard.
 
 ![Dashboard](docs/dashboard.png)
 
 ## Features
 
-- 📁 **Local file parsing** — reads Claude Code, Codex CLI, OpenClaw, Pi session files, OpenCode SQLite database, and Kiro CLI session files directly
+- 📁 **Local data parsing** — reads Claude Code, Codex CLI, OpenClaw, Pi session files, OpenCode SQLite database, Kiro CLI session files, and Hermes state database directly
 - 💰 **Automatic cost calculation** — fetches model pricing from [litellm](https://github.com/BerriAI/litellm), supports backfill when prices update
 - 🗄️ **SQLite storage** — single file, zero ops, data is correctable
 - 📊 **Web dashboard** — dark-themed UI with ECharts: cost breakdown, token trends, session list
@@ -34,7 +34,7 @@ mkdir -p ./data && docker compose up -d
 open http://localhost:9800
 ```
 
-The default `docker-compose.yml` mounts `~/.claude/projects`, `~/.codex/sessions`, `~/.openclaw/agents`, `~/.local/share/opencode`, and `~/.kiro/sessions` read-only. Data persists in `./data/`.
+The default `docker-compose.yml` mounts `~/.claude/projects`, `~/.codex/sessions`, `~/.openclaw/agents`, `~/.local/share/opencode`, `~/.kiro/sessions`, `~/.pi/agent/sessions`, and `~/.hermes` read-only. Data persists in `./data/`.
 
 The container uses `config.docker.yaml` by default (binds to `0.0.0.0`, stores data in `/data/`). To override, mount your own config:
 
@@ -90,6 +90,16 @@ collectors:
     paths:
       - "~/.kiro/sessions/cli"
     scan_interval: 60s
+  pi:
+    enabled: true
+    paths:
+      - "~/.pi/agent/sessions"
+    scan_interval: 60s
+  hermes:
+    enabled: true
+    paths:
+      - "~/.hermes/state.db"
+    scan_interval: 60s
 
 storage:
   path: "./agent-usage.db"
@@ -131,12 +141,13 @@ open http://localhost:9800
 | [OpenCode](https://github.com/anomalyco/opencode) | `~/.local/share/opencode/opencode.db` | SQLite |
 | [Kiro CLI](https://kiro.dev) | `~/.kiro/sessions/cli/<session>.json` + `.jsonl` | JSON + JSONL |
 | [Pi](https://pi.dev) | `~/.pi/agent/sessions/<workspace>/<session>.jsonl` | JSONL |
+| [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/sessions) | `~/.hermes/state.db` | SQLite |
 
 ### Adding New Sources
 
 Each source needs a collector that:
-1. Scans session directories for JSONL files
-2. Parses entries and extracts token usage per API call
+1. Scans session directories or local SQLite databases
+2. Parses entries and extracts token usage per API call, or replaces cumulative session totals for sources such as Hermes
 3. Writes records to SQLite via the storage layer
 
 See `internal/collector/claude.go` as a reference implementation.
@@ -145,7 +156,7 @@ See `internal/collector/claude.go` as a reference implementation.
 
 The web dashboard provides:
 
-- **Sticky top bar** — time presets, granularity, source filter (Claude/Codex/OpenClaw/OpenCode/Kiro CLI/Pi), auto-refresh
+- **Sticky top bar** — time presets, granularity, source filter (Claude/Codex/OpenClaw/OpenCode/Kiro CLI/Pi/Hermes), auto-refresh
 - **Summary cards** — total tokens, cost, sessions, prompts, API calls
 - **Token usage** — stacked bar chart (input/output/cache read/cache write)
 - **Cost trend** — stacked bar chart by model with consistent color mapping
@@ -174,7 +185,8 @@ agent-usage
 │   │   ├── kiro.go             # Kiro CLI session scanner
 │   │   ├── kiro_process.go     # Kiro CLI JSON + JSONL parser
 │   │   ├── pi.go               # Pi coding agent session scanner
-│   │   └── pi_process.go       # Pi coding agent JSONL parser
+│   │   ├── pi_process.go       # Pi coding agent JSONL parser
+│   │   └── hermes.go           # Hermes SQLite state collector
 │   ├── pricing/                # litellm price fetcher + cost formula
 │   ├── storage/
 │   │   ├── sqlite.go           # DB init + migrations
@@ -202,7 +214,7 @@ When prices update, historical records are automatically backfilled.
 
 ## API Endpoints
 
-All endpoints accept `from` and `to` (YYYY-MM-DD) query parameters. Optional: `source` (`claude`, `codex`, `openclaw`, `opencode`, `kiro`, `pi`) to filter by agent, `model` to filter by model name, `granularity` (`1m`, `30m`, `1h`, `6h`, `12h`, `1d`, `1w`, `1M`) for time-series endpoints.
+All endpoints accept `from` and `to` (YYYY-MM-DD) query parameters. Optional: `source` (`claude`, `codex`, `openclaw`, `opencode`, `kiro`, `pi`, `hermes`) to filter by agent, `model` to filter by model name, `granularity` (`1m`, `30m`, `1h`, `6h`, `12h`, `1d`, `1w`, `1M`) for time-series endpoints.
 
 | Endpoint | Description |
 |----------|-------------|

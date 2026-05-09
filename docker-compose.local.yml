@@ -13,3 +13,4 @@ services:
       - ./data:/data
       - ~/.claude/projects:/sessions/claude:ro
       - ~/.codex/sessions:/sessions/codex:ro
+      - ~/.hermes:/sessions/hermes:ro

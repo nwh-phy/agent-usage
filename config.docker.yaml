@@ -23,6 +23,14 @@ collectors:
     enabled: true
     paths: ["/sessions/kiro/cli"]
     scan_interval: 60s
+  pi:
+    enabled: true
+    paths: ["/sessions/pi"]
+    scan_interval: 60s
+  hermes:
+    enabled: true
+    paths: ["/sessions/hermes/state.db"]
+    scan_interval: 60s
 
 storage:
   path: "/data/agent-usage.db"

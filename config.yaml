@@ -26,6 +26,10 @@ collectors:
     enabled: true
     paths: ["~/.pi/agent/sessions"]
     scan_interval: 60s
+  hermes:
+    enabled: true
+    paths: ["wsl:Ubuntu:/home/wenhui/.hermes/state.db"]
+    scan_interval: 60s
 storage:
   path: "./agent-usage.db"
 pricing:

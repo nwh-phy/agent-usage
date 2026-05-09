@@ -15,12 +15,13 @@ type DB struct {
 	mu sync.Mutex
 }
 
-// UsageRecord represents a single API call's token usage and cost.
+// UsageRecord represents token usage and cost for one stored usage bucket.
 type UsageRecord struct {
 	ID                       int64
-	Source                   string // "claude" or "codex"
+	Source                   string
 	SessionID                string
 	Model                    string
+	Calls                    int
 	InputTokens              int64
 	OutputTokens             int64
 	CacheCreationInputTokens int64
@@ -76,6 +77,7 @@ func migrate(db *sql.DB) error {
 			source TEXT NOT NULL,
 			session_id TEXT NOT NULL,
 			model TEXT NOT NULL,
+			calls INTEGER DEFAULT 1,
 			input_tokens INTEGER DEFAULT 0,
 			output_tokens INTEGER DEFAULT 0,
 			cache_creation_input_tokens INTEGER DEFAULT 0,
@@ -142,6 +144,7 @@ func migrate(db *sql.DB) error {
 
 	// Add scan_context column to file_state for existing DBs (idempotent).
 	db.Exec("ALTER TABLE file_state ADD COLUMN scan_context TEXT DEFAULT ''")
+	db.Exec("ALTER TABLE usage_records ADD COLUMN calls INTEGER DEFAULT 1")
 
 	// Versioned migrations: each runs once, tracked via meta table.
 	migrations := []struct {
